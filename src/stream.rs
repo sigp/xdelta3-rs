@@ -212,7 +212,7 @@ where
         stream.next_in = input_buf.as_ptr();
         stream.avail_in = read_size as u32;
 
-        'inner: loop {
+        loop {
             let ret: binding::xd3_rvalues = unsafe {
                 std::mem::transmute(match mode {
                     Mode::Encode => binding::xd3_encode_input(stream),

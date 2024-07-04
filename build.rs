@@ -58,6 +58,21 @@ fn main() {
     {
         let mut builder = bindgen::Builder::default();
 
+        // On macos, we need to explicitly include `errno.h`.
+        // After Catalina, the headers are now located under the SDK. xcrun is an Xcode tool to
+        // dynamically locate the path of the SDK. The header is located in the path:
+        // `xcrun --show-sdk-path`/usr/include/errno.h
+        // but we just include the entire directory with isysroot
+        if cfg!(target_os = "macos") {
+            if let Ok(sdk_path) = std::process::Command::new("xcrun")
+                .arg("--show-sdk-path")
+                .output()
+            {
+                let sdk_path = String::from_utf8(sdk_path.stdout).unwrap();
+                builder = builder.clang_arg(format!("-isysroot{}", sdk_path.trim()));
+            }
+        }
+
         for (key, val) in &defines {
             builder = builder.clang_arg(format!("-D{}={}", key, val));
         }

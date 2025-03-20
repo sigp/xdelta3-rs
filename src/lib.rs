@@ -29,6 +29,7 @@ pub enum Error {
     XDelta3 {
         error_code: i32,
     },
+    InsufficientOutputLength,
     OutOfBounds {
         expected_length: u32,
         actual_length: u32,
@@ -42,6 +43,9 @@ impl std::fmt::Debug for Error {
                 let c_str = CStr::from_ptr(libc::strerror(*error_code));
                 write!(f, "XDelta3 {} ({})", c_str.to_string_lossy(), error_code)
             },
+            Self::InsufficientOutputLength => {
+                write!(f, "InsufficientOutputLength")
+            }
             Self::OutOfBounds {
                 expected_length,
                 actual_length,
@@ -116,6 +120,8 @@ pub fn encode_with_output_len(
             output.set_len(avail_output as usize);
         }
         Ok(output)
+    } else if error_code == libc::ENOSPC {
+        Err(Error::InsufficientOutputLength)
     } else {
         Err(Error::XDelta3 { error_code })
     }
@@ -181,6 +187,8 @@ pub fn decode_with_output_len(
             output.set_len(avail_output as usize);
         }
         Ok(output)
+    } else if error_code == libc::ENOSPC {
+        Err(Error::InsufficientOutputLength)
     } else {
         Err(Error::XDelta3 { error_code })
     }

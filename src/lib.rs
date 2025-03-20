@@ -25,15 +25,29 @@ mod binding {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-pub struct Error {
-    error_code: i32,
+pub enum Error {
+    XDelta3 {
+        error_code: i32,
+    },
+    OutOfBounds {
+        expected_length: u32,
+        actual_length: u32,
+    },
 }
 
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        unsafe {
-            let c_str = CStr::from_ptr(libc::strerror(self.error_code));
-            write!(f, "{} ({})", c_str.to_string_lossy(), self.error_code)
+        match self {
+            Self::XDelta3 { error_code } => unsafe {
+                let c_str = CStr::from_ptr(libc::strerror(*error_code));
+                write!(f, "XDelta3 {} ({})", c_str.to_string_lossy(), error_code)
+            },
+            Self::OutOfBounds {
+                expected_length,
+                actual_length,
+            } => {
+                write!(f, "OutOfBounds: {} > {}", actual_length, expected_length)
+            }
         }
     }
 }
@@ -66,11 +80,18 @@ impl std::fmt::Debug for Error {
 /// But don't worry, if your data is large enough and kind of similar between each other (usually the case
 /// for software updates or ROM patches), the patch data should be only a fraction of your updated file.
 pub fn encode(input: &[u8], src: &[u8]) -> Result<Vec<u8>, Error> {
+    encode_with_output_len(input, src, (input.len() + src.len()) as u32 * 2)
+}
+
+pub fn encode_with_output_len(
+    input: &[u8],
+    src: &[u8],
+    output_buffer_len: u32,
+) -> Result<Vec<u8>, Error> {
     let input_len = input.len() as c_uint;
     let src_len = src.len() as c_uint;
-    let estimated_out_len = (input_len + src_len) * 2;
     let mut avail_output = 0 as c_uint;
-    let mut output = Vec::with_capacity(estimated_out_len as usize);
+    let mut output = Vec::with_capacity(output_buffer_len as usize);
     let error_code = unsafe {
         binding::xd3_encode_memory(
             input.as_ptr(),
@@ -79,17 +100,24 @@ pub fn encode(input: &[u8], src: &[u8]) -> Result<Vec<u8>, Error> {
             src_len,
             output.as_mut_ptr(),
             &mut avail_output,
-            estimated_out_len,
+            output_buffer_len,
             0,
         )
     };
     if error_code == 0 {
+        // Extra sanity check to prevent UB.
+        if avail_output > output_buffer_len {
+            return Err(Error::OutOfBounds {
+                expected_length: output_buffer_len,
+                actual_length: avail_output,
+            });
+        }
         unsafe {
             output.set_len(avail_output as usize);
         }
         Ok(output)
     } else {
-        Err(Error { error_code })
+        Err(Error::XDelta3 { error_code })
     }
 }
 
@@ -117,11 +145,18 @@ pub fn encode(input: &[u8], src: &[u8]) -> Result<Vec<u8>, Error> {
 /// }
 /// ```
 pub fn decode(input: &[u8], src: &[u8]) -> Result<Vec<u8>, Error> {
+    decode_with_output_len(input, src, (input.len() + src.len()) as u32 * 2)
+}
+
+pub fn decode_with_output_len(
+    input: &[u8],
+    src: &[u8],
+    output_buffer_len: u32,
+) -> Result<Vec<u8>, Error> {
     let input_len = input.len() as c_uint;
     let src_len = src.len() as c_uint;
-    let estimated_out_len = (input_len + src_len) * 2;
     let mut avail_output = 0 as c_uint;
-    let mut output = Vec::with_capacity(estimated_out_len as usize);
+    let mut output = Vec::with_capacity(output_buffer_len as usize);
     let error_code = unsafe {
         binding::xd3_decode_memory(
             input.as_ptr(),
@@ -130,16 +165,23 @@ pub fn decode(input: &[u8], src: &[u8]) -> Result<Vec<u8>, Error> {
             src_len,
             output.as_mut_ptr(),
             &mut avail_output,
-            estimated_out_len,
+            output_buffer_len,
             0,
         )
     };
     if error_code == 0 {
+        // Extra sanity check to prevent UB.
+        if avail_output > output_buffer_len {
+            return Err(Error::OutOfBounds {
+                expected_length: output_buffer_len,
+                actual_length: avail_output,
+            });
+        }
         unsafe {
             output.set_len(avail_output as usize);
         }
         Ok(output)
     } else {
-        Err(Error { error_code })
+        Err(Error::XDelta3 { error_code })
     }
 }

@@ -78,7 +78,7 @@ fn main() {
         }
         let bindings = builder
             .header("xdelta3/xdelta3/xdelta3.h")
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .allowlist_function("xd3_.*")
             .allowlist_type("xd3_.*")
             .rustified_enum("xd3_.*")
